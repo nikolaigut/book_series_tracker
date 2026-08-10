@@ -38,7 +38,9 @@ class _SearchScreenState extends State<SearchScreen> {
           ? SearchType.title
           : _selectedFilter == 1
               ? SearchType.author
-              : SearchType.any;
+              : _selectedFilter == 2
+                  ? SearchType.series
+                  : SearchType.any;
       final results = await _openLibrary.search(query, type: type);
       setState(() {
         _results = results;
@@ -151,67 +153,110 @@ class _SearchScreenState extends State<SearchScreen> {
     String? seriesName;
     try {
       seriesName = await _detectSeriesName(book);
-    } finally {
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Prüfen der Reihe: $e')),
+        );
+      }
       setState(() => _loading = false);
+      return;
+    } finally {
+      if (mounted && seriesName == null) setState(() => _loading = false);
     }
 
     if (!mounted) return;
 
-    if (seriesName == null || seriesName.isEmpty) {
-      await _addBook(book);
+    if (seriesName != null && seriesName.isNotEmpty) {
+      final choice = await showDialog<String?>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Reihe erkannt'),
+          content: Text('"${book.title}" gehört zur Reihe "$seriesName". Was möchtest du hinzufügen?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('single'),
+              child: const Text('Nur dieses Buch'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop('series'),
+              child: const Text('Ganze Reihe'),
+            ),
+          ],
+        ),
+      );
+
+      if (choice == null) return;
+
+      if (choice == 'single') {
+        await _addBook(book);
+      } else {
+        setState(() => _loading = true);
+        List<Book> books = [];
+        try {
+          books = await _openLibrary.searchSeriesBooks(seriesName, author: book.author);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Fehler beim Laden der Reihe: $e')),
+            );
+          }
+          setState(() => _loading = false);
+          return;
+        } finally {
+          setState(() => _loading = false);
+        }
+
+        if (!mounted) return;
+
+        if (books.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Keine weiteren Bücher der Reihe gefunden')),
+          );
+          return;
+        }
+
+        await _addBooks(books, initialName: seriesName, initialAuthor: book.author);
+      }
       return;
     }
 
-    final choice = await showDialog<String?>(
+    // Fallback: OpenLibrary has no series info.
+    final fallbackChoice = await showDialog<String?>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Reihe erkannt'),
-        content: Text('"${book.title}" gehört zur Reihe "$seriesName". Was möchtest du hinzufügen?'),
+        title: const Text('Keine Reiheninformation'),
+        content: const Text('OpenLibrary hat für dieses Buch keine Reiheninfo. Möchtest du alle aktuellen Suchergebnisse oder nur dieses Buch zur Reihe hinzufügen?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop('single'),
             child: const Text('Nur dieses Buch'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop('series'),
-            child: const Text('Ganze Reihe'),
-          ),
+          if (_results.length > 1)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('all'),
+              child: const Text('Alle Suchergebnisse'),
+            ),
         ],
       ),
     );
 
-    if (choice == null) return;
-
-    if (choice == 'single') {
+    if (fallbackChoice == null) return;
+    if (fallbackChoice == 'single') {
       await _addBook(book);
     } else {
-      setState(() => _loading = true);
-      List<Book> books = [];
-      try {
-        books = await _openLibrary.searchSeriesBooks(seriesName, author: book.author);
-      } finally {
-        setState(() => _loading = false);
-      }
-
-      if (!mounted) return;
-
-      if (books.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Keine weiteren Bücher der Reihe gefunden')),
-        );
-        return;
-      }
-
-      await _addBooks(books, initialName: seriesName, initialAuthor: book.author);
+      await _addAllToSeries();
     }
   }
 
   Future<void> _addAllToSeries() async {
     if (_results.isEmpty) return;
 
-    final first = _results.first;
+    final filtered = _openLibrary.filterSeriesCandidates(_results);
+    final books = filtered.isEmpty ? _results : filtered;
+    final first = books.first;
     await _addBooks(
-      _results,
+      books,
       initialName: _controller.text.trim(),
       initialAuthor: first.author,
     );
@@ -224,6 +269,8 @@ class _SearchScreenState extends State<SearchScreen> {
       case 1:
         return 'Autor';
       case 2:
+        return 'Reihe';
+      case 3:
         return 'Alles';
       default:
         return '';
@@ -278,6 +325,12 @@ class _SearchScreenState extends State<SearchScreen> {
                   label: Text(_filterLabel(2)),
                   selected: _selectedFilter == 2,
                   onSelected: (_) => setState(() => _selectedFilter = 2),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: Text(_filterLabel(3)),
+                  selected: _selectedFilter == 3,
+                  onSelected: (_) => setState(() => _selectedFilter = 3),
                 ),
               ],
             ),

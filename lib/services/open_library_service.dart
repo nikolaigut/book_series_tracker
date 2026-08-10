@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/book.dart';
 
-enum SearchType { title, author, any }
+enum SearchType { title, author, series, any }
 
 class OpenLibraryService {
   static const String _baseSearchUrl = 'https://openlibrary.org/search.json';
@@ -27,7 +27,11 @@ class OpenLibraryService {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final docs = data['docs'] as List<dynamic>? ?? [];
 
-    return docs.whereType<Map<String, dynamic>>().map(_mapToBook).toList();
+    final books = docs.whereType<Map<String, dynamic>>().map(_mapToBook).toList();
+    if (type == SearchType.series) {
+      return filterSeriesCandidates(books);
+    }
+    return books;
   }
 
   String _buildQuery(String query, SearchType type) {
@@ -37,6 +41,8 @@ class OpenLibraryService {
         return 'title:"$escaped"';
       case SearchType.author:
         return 'author:"$escaped"';
+      case SearchType.series:
+        return 'series:"$escaped"';
       case SearchType.any:
       default:
         return escaped;
@@ -71,16 +77,11 @@ class OpenLibraryService {
   Future<List<Book>> searchSeriesBooks(
     String seriesName, {
     String? author,
-    int limit = 50,
+    int limit = 20,
   }) async {
     if (seriesName.trim().isEmpty) return [];
 
-    final parts = ['series:"${seriesName.trim()}"'];
-    if (author != null && author.trim().isNotEmpty) {
-      parts.add('author_name:"${author.trim()}"');
-    }
-    final q = parts.join(' ');
-
+    final q = 'series:"${seriesName.trim()}"';
     final uri = Uri.parse(_baseSearchUrl).replace(
       queryParameters: {
         'q': q,
@@ -95,25 +96,52 @@ class OpenLibraryService {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final docs = data['docs'] as List<dynamic>? ?? [];
 
+    final books = docs.whereType<Map<String, dynamic>>().map(_mapToBook).toList();
+    return filterSeriesCandidates(books);
+  }
+
+  List<Book> filterSeriesCandidates(List<Book> books) {
     final seen = <String>{};
-    final books = <Book>[];
+    var result = <Book>[];
     final exclude = RegExp(
-      r'\(series\)|\b(box set|collection|pack|house|history of|unofficial|critical perspectives|guide|map of|beyond|political issues)\b|\d+[-–]\d+|\s/\s',
+      r'\(series\)|\bseries\b|\b(box set|boxed set|collection|pack|set|house|history of|unofficial|critical perspectives|guide|map of|beyond|political issues|prebound|untitled)\b|\d+[-–]\d+|\s/\s',
       caseSensitive: false,
     );
 
-    for (final doc in docs.whereType<Map<String, dynamic>>()) {
-      final book = _mapToBook(doc);
+    for (final book in books) {
       if (book.title.isEmpty) continue;
-      final normalized = book.title.toLowerCase().trim();
+      final normalized = _normalizeTitle(book.title);
       if (seen.contains(normalized)) continue;
       if (exclude.hasMatch(book.title)) continue;
-      if (author != null && author.isNotEmpty && !_authorMatches(author, doc['author_name'])) continue;
       seen.add(normalized);
-      books.add(book);
+      result.add(book);
     }
 
-    books.sort((a, b) {
+    // If one author dominates, keep only books by that author to avoid
+    // unrelated titles that are merely tagged with the same series.
+    final authorCounts = <String, int>{};
+    for (final book in result) {
+      if (book.author != null && book.author!.isNotEmpty) {
+        for (final name in book.author!.split(',').map((s) => s.trim())) {
+          authorCounts[name] = (authorCounts[name] ?? 0) + 1;
+        }
+      }
+    }
+    String? topAuthor;
+    var topCount = 0;
+    authorCounts.forEach((name, count) {
+      if (count > topCount) {
+        topCount = count;
+        topAuthor = name;
+      }
+    });
+    if (topAuthor != null && topCount * 2 > result.length) {
+      result = result
+          .where((b) => b.author != null && b.author!.toLowerCase().contains(topAuthor!.toLowerCase()))
+          .toList();
+    }
+
+    result.sort((a, b) {
       final ay = a.publishYear;
       final by = b.publishYear;
       if (ay == null && by == null) return 0;
@@ -121,15 +149,15 @@ class OpenLibraryService {
       if (by == null) return -1;
       return ay.compareTo(by);
     });
-    return books;
+    return result;
   }
 
-  bool _authorMatches(String author, dynamic authors) {
-    if (authors is! List) return false;
-    final names = authors.whereType<String>().toList();
-    if (names.isEmpty) return false;
-    final search = author.toLowerCase().replaceAll(RegExp(r'[\.\s]'), '');
-    return names.any((name) => name.toLowerCase().replaceAll(RegExp(r'[\.\s]'), '').contains(search));
+  String _normalizeTitle(String title) {
+    return title
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
+        .replaceAll(RegExp(r':.*$'), '')
+        .trim();
   }
 
   Book _mapToBook(Map<String, dynamic> doc) {

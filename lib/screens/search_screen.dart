@@ -65,7 +65,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Future<void> _addToSeries(Book book) async {
+  Future<void> _addBook(Book book) async {
     final result = await _chooseSeries(
       initialName: book.title,
       initialAuthor: book.author,
@@ -90,13 +90,12 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  Future<void> _addAllToSeries() async {
-    if (_results.isEmpty) return;
+  Future<void> _addBooks(List<Book> books, {String? initialName, String? initialAuthor}) async {
+    if (books.isEmpty) return;
 
-    final first = _results.first;
     final result = await _chooseSeries(
-      initialName: _controller.text.trim(),
-      initialAuthor: first.author,
+      initialName: initialName ?? books.first.title,
+      initialAuthor: initialAuthor ?? books.first.author,
     );
     if (result == null) return;
 
@@ -105,7 +104,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     final existing = await _db.getBooksForSeries(seriesId);
     var order = existing.length;
-    for (final book in _results) {
+    for (final book in books) {
       await _db.insertBook(
         book.copyWith(
           seriesId: seriesId,
@@ -117,9 +116,105 @@ class _SearchScreenState extends State<SearchScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_results.length} Bücher zur Reihe hinzugefügt')),
+        SnackBar(content: Text('${books.length} Bücher zur Reihe hinzugefügt')),
       );
     }
+  }
+
+  Future<String?> _detectSeriesName(Book book) async {
+    final key = book.openLibraryKey;
+    if (key == null || key.isEmpty) return null;
+
+    final work = await _openLibrary.fetchWork(key);
+    if (work == null) return null;
+
+    final seriesList = work['series'] as List<dynamic>?;
+    if (seriesList == null || seriesList.isEmpty) return null;
+
+    final first = seriesList.first;
+    if (first is String) return first;
+    if (first is Map<String, dynamic>) {
+      final name = first['name'] as String?;
+      if (name != null && name.isNotEmpty) return name;
+
+      final seriesMap = first['series'] as Map<String, dynamic>?;
+      final seriesKey = seriesMap?['key'] as String?;
+      if (seriesKey != null && seriesKey.isNotEmpty) {
+        return _openLibrary.fetchSeriesName(seriesKey);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _onBookTapped(Book book) async {
+    setState(() => _loading = true);
+    String? seriesName;
+    try {
+      seriesName = await _detectSeriesName(book);
+    } finally {
+      setState(() => _loading = false);
+    }
+
+    if (!mounted) return;
+
+    if (seriesName == null || seriesName.isEmpty) {
+      await _addBook(book);
+      return;
+    }
+
+    final choice = await showDialog<String?>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Reihe erkannt'),
+        content: Text('"${book.title}" gehört zur Reihe "$seriesName". Was möchtest du hinzufügen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('single'),
+            child: const Text('Nur dieses Buch'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('series'),
+            child: const Text('Ganze Reihe'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+
+    if (choice == 'single') {
+      await _addBook(book);
+    } else {
+      setState(() => _loading = true);
+      List<Book> books = [];
+      try {
+        books = await _openLibrary.searchSeriesBooks(seriesName, author: book.author);
+      } finally {
+        setState(() => _loading = false);
+      }
+
+      if (!mounted) return;
+
+      if (books.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Keine weiteren Bücher der Reihe gefunden')),
+        );
+        return;
+      }
+
+      await _addBooks(books, initialName: seriesName, initialAuthor: book.author);
+    }
+  }
+
+  Future<void> _addAllToSeries() async {
+    if (_results.isEmpty) return;
+
+    final first = _results.first;
+    await _addBooks(
+      _results,
+      initialName: _controller.text.trim(),
+      initialAuthor: first.author,
+    );
   }
 
   String _filterLabel(int index) {
@@ -220,7 +315,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         if (book.publishYear != null) '${book.publishYear}',
                       ].join(' · '),
                     ),
-                    onTap: () => _addToSeries(book),
+                    onTap: () => _onBookTapped(book),
                   );
                 },
               ),

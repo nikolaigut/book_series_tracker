@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../models/book.dart';
 import '../models/series.dart';
 
 class AddToSeriesDialog extends StatefulWidget {
-  final Book book;
+  final String? initialName;
+  final String? initialAuthor;
   final List<ReadingSeries> existingSeries;
 
   const AddToSeriesDialog({
     super.key,
-    required this.book,
+    this.initialName,
+    this.initialAuthor,
     required this.existingSeries,
   });
 
@@ -25,8 +26,8 @@ class _AddToSeriesDialogState extends State<AddToSeriesDialog> {
   @override
   void initState() {
     super.initState();
-    _nameController.text = widget.book.title;
-    _authorController.text = widget.book.author ?? '';
+    _nameController.text = widget.initialName ?? '';
+    _authorController.text = widget.initialAuthor ?? '';
   }
 
   @override

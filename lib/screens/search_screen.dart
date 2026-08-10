@@ -52,14 +52,24 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  Future<void> _addToSeries(Book book) async {
+  Future<ReadingSeries?> _chooseSeries({String? initialName, String? initialAuthor}) async {
     final series = await _db.getSeries();
-    if (!mounted) return;
-    final result = await showDialog<ReadingSeries?>(
+    if (!mounted) return null;
+    return showDialog<ReadingSeries?>(
       context: context,
-      builder: (_) => AddToSeriesDialog(book: book, existingSeries: series),
+      builder: (_) => AddToSeriesDialog(
+        initialName: initialName,
+        initialAuthor: initialAuthor,
+        existingSeries: series,
+      ),
     );
+  }
 
+  Future<void> _addToSeries(Book book) async {
+    final result = await _chooseSeries(
+      initialName: book.title,
+      initialAuthor: book.author,
+    );
     if (result == null) return;
 
     int? seriesId = result.id;
@@ -76,6 +86,38 @@ class _SearchScreenState extends State<SearchScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('"${book.title}" zur Reihe hinzugefügt')),
+      );
+    }
+  }
+
+  Future<void> _addAllToSeries() async {
+    if (_results.isEmpty) return;
+
+    final first = _results.first;
+    final result = await _chooseSeries(
+      initialName: _controller.text.trim(),
+      initialAuthor: first.author,
+    );
+    if (result == null) return;
+
+    int? seriesId = result.id;
+    seriesId ??= await _db.insertSeries(result);
+
+    final existing = await _db.getBooksForSeries(seriesId);
+    var order = existing.length;
+    for (final book in _results) {
+      await _db.insertBook(
+        book.copyWith(
+          seriesId: seriesId,
+          orderIndex: order,
+        ),
+      );
+      order++;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_results.length} Bücher zur Reihe hinzugefügt')),
       );
     }
   }
@@ -99,6 +141,13 @@ class _SearchScreenState extends State<SearchScreen> {
       appBar: AppBar(
         title: const Text('Buch suchen'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.playlist_add),
+            tooltip: 'Alle zur Reihe hinzufügen',
+            onPressed: _results.isEmpty ? null : _addAllToSeries,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

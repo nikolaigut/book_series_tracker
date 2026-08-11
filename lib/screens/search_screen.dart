@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../models/series.dart';
 import '../services/database_service.dart';
+import '../services/libex_service.dart';
 import '../services/open_library_service.dart';
 import '../widgets/add_to_series_dialog.dart';
 
@@ -15,6 +16,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final OpenLibraryService _openLibrary = OpenLibraryService();
+  final LibexService _libex = LibexService();
   final DatabaseService _db = DatabaseService();
   final TextEditingController _controller = TextEditingController();
 
@@ -41,7 +43,10 @@ class _SearchScreenState extends State<SearchScreen> {
               : _selectedFilter == 2
                   ? SearchType.series
                   : SearchType.any;
-      final results = await _openLibrary.search(query, type: type);
+      var results = await _openLibrary.search(query, type: type);
+      if (type == SearchType.series && results.isEmpty) {
+        results = await _libex.searchSeriesBooks(query);
+      }
       setState(() {
         _results = results;
         _loading = false;

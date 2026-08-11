@@ -52,6 +52,29 @@ class _HomeScreenState extends State<HomeScreen> {
         .then((_) => _loadData());
   }
 
+  Future<void> _deleteSeries(ReadingSeries series) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Reihe löschen'),
+        content: Text('Soll die Reihe "${series.name}" mit allen Büchern gelöscht werden?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || series.id == null) return;
+    await _db.deleteSeries(series.id!);
+    _loadData();
+  }
+
   String _progressText(ReadingSeries series) {
     final books = _booksBySeries[series.id] ?? [];
     if (books.isEmpty) return 'Noch keine Bücher';
@@ -101,7 +124,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                         isThreeLine: true,
-                        trailing: const Icon(Icons.chevron_right),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              tooltip: 'Reihe löschen',
+                              onPressed: () => _deleteSeries(series),
+                            ),
+                            const Icon(Icons.chevron_right),
+                          ],
+                        ),
                         onTap: () => _navigateToSeries(series),
                       ),
                     );

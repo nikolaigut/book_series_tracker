@@ -41,6 +41,24 @@ class _SeriesScreenState extends State<SeriesScreen> {
 
   Future<void> _deleteBook(Book book) async {
     if (book.id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Buch löschen'),
+        content: Text('Soll "${book.title}" aus der Reihe entfernt werden?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     await _db.deleteBook(book.id!);
     _loadBooks();
   }
@@ -109,11 +127,13 @@ class _SeriesScreenState extends State<SeriesScreen> {
                                     IconButton(
                                       icon: const Icon(Icons.info_outline),
                                       onPressed: () {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) => BookDetailScreen(book: book),
-                                          ),
-                                        );
+                                        Navigator.of(context)
+                                            .push(
+                                              MaterialPageRoute(
+                                                builder: (_) => BookDetailScreen(book: book),
+                                              ),
+                                            )
+                                            .then((_) => _loadBooks());
                                       },
                                     ),
                                     IconButton(

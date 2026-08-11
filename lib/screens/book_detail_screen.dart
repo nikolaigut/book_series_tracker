@@ -30,6 +30,29 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     setState(() => _book = updated);
   }
 
+  Future<void> _deleteBook() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Buch löschen'),
+        content: Text('Soll "${_book.title}" gelöscht werden?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || _book.id == null) return;
+    await _db.deleteBook(_book.id!);
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
   Future<void> _openOnleihe() async {
     final ok = await _onleihe.searchAvailability(_book.title);
     if (!ok && mounted) {
@@ -45,6 +68,13 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       appBar: AppBar(
         title: Text(_book.title),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Buch löschen',
+            onPressed: _deleteBook,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

@@ -9,6 +9,16 @@ class LibexService {
     'User-Agent': 'book_series_tracker/1.0',
   };
 
+  static final RegExp _exclude = RegExp(
+    r'(?:^|\s)(?:coloring|cookbook|cook book|recipe book|boxset|boxed set|box set|'
+    r'collection|collectors|omnibus|anthology|journal|workbook|activity book|'
+    r'sticker|poster|map book|companion|official|merchandise|play|drama|'
+    r'full[-\s]cast|dramatized|dramatised|abridged|movie|tv|behind the scenes|'
+    r'prelude|prequel|deleted|short story|0\.5|1\.5|2\.5|3\.5|4\.5|5\.5|6\.5|7\.5|8\.5|9\.5)'
+    r'(?:\s|$|[,;:!.)\]])',
+    caseSensitive: false,
+  );
+
   Future<List<Book>> searchSeriesBooks(String seriesName) async {
     final trimmed = seriesName.trim();
     if (trimmed.isEmpty) return [];
@@ -31,7 +41,7 @@ class LibexService {
       }).toList()
         ..sort((a, b) => b.nameScore.compareTo(a.nameScore));
 
-      final topCandidates = scored
+      var topCandidates = scored
           .where((s) => s.nameScore >= 0.05)
           .take(3)
           .toList();
@@ -82,6 +92,7 @@ class LibexService {
     'the', 'a', 'an', 'and', 'or', 'of', 'in', 'on', 'at', 'to', 'for', 'with',
     'by', 'from', 'as', 'is', 'it', 'this', 'that', 'de', 'la', 'el', 'en',
     'die', 'der', 'und', 'das', 'les', 'une', 'et', 'le', 'series', 'trilogy',
+    'saga', 'novel', 'story', 'stories', 'chronicles', 'volume', 'vol',
   };
 
   Set<String> _meaningfulWords(String text) {
@@ -105,30 +116,57 @@ class LibexService {
 
       for (final raw in data) {
         if (raw is! Map<String, dynamic>) continue;
-        final book = _mapToBook(raw, seriesAsin: asin, fallbackIndex: books.length);
-        final key = '${book.title}|${book.author ?? ''}|${book.orderIndex}';
+
+        final title = (raw['title'] as String? ?? '').trim();
+        final subtitle = (raw['subtitle'] as String? ?? '').trim();
+
+        if (_isExcluded(title, subtitle)) continue;
+
+        final posStr = _extractPositionString(raw, asin);
+        if (posStr == null || posStr.contains('.')) continue;
+
+        final book = _mapToBook(raw, seriesAsin: asin, posStr: posStr);
+        final key = '${book.author ?? ''}|${book.orderIndex}';
         if (seen.contains(key)) continue;
         seen.add(key);
         books.add(book);
       }
 
+      books.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
       return books;
     } catch (_) {
       return [];
     }
   }
 
+  bool _isExcluded(String title, String subtitle) {
+    return _exclude.hasMatch('$title $subtitle'.toLowerCase());
+  }
+
+  String? _extractPositionString(Map<String, dynamic> raw, String seriesAsin) {
+    final seriesList = raw['series'] as List<dynamic>?;
+    if (seriesList != null) {
+      for (final s in seriesList) {
+        if (s is Map<String, dynamic> && s['asin'] == seriesAsin) {
+          return (s['position'] as String?)?.trim();
+        }
+      }
+    }
+
+    final subtitle = (raw['subtitle'] as String? ?? '').toLowerCase();
+    final match = RegExp(
+      r'\bbook\s+(\d+(?:\.\d+)?)\b',
+      caseSensitive: false,
+    ).firstMatch(subtitle);
+    return match?.group(1);
+  }
+
   Book _mapToBook(
     Map<String, dynamic> raw, {
     required String seriesAsin,
-    required int fallbackIndex,
+    String? posStr,
   }) {
     final title = (raw['title'] as String? ?? '').trim();
-    final subtitle = (raw['subtitle'] as String? ?? '').trim();
-
-    final fullTitle = subtitle.isNotEmpty && !title.toLowerCase().contains(subtitle.toLowerCase())
-        ? '$title: $subtitle'
-        : title;
 
     final authorsRaw = raw['authors'] as List<dynamic>?;
     String? author;
@@ -149,33 +187,29 @@ class LibexService {
       if (dt != null) publishYear = dt.year;
     }
 
-    int? position;
-    final seriesList = raw['series'] as List<dynamic>?;
-    if (seriesList != null) {
-      for (final s in seriesList) {
-        if (s is Map<String, dynamic> && s['asin'] == seriesAsin) {
-          final posStr = s['position'] as String?;
-          if (posStr != null && posStr.isNotEmpty) {
-            final pos = double.tryParse(posStr);
-            if (pos != null) position = pos.floor();
-          }
-          break;
-        }
+    var orderIndex = 0;
+    if (posStr != null && posStr.isNotEmpty) {
+      final pos = double.tryParse(posStr);
+      if (pos != null) orderIndex = pos.floor();
+    } else {
+      final subtitle = (raw['subtitle'] as String? ?? '').toLowerCase();
+      final match = RegExp(
+        r'\bbook\s+(\d+)\b',
+        caseSensitive: false,
+      ).firstMatch(subtitle);
+      if (match != null) {
+        final parsed = int.tryParse(match.group(1)!);
+        if (parsed != null) orderIndex = parsed;
       }
     }
 
-    if (position == null) {
-      final match = RegExp(r'\bbook\s+(\d+)\b', caseSensitive: false).firstMatch(subtitle);
-      if (match != null) position = int.tryParse(match.group(1)!);
-    }
-
     return Book(
-      title: fullTitle,
+      title: title,
       author: author,
       coverUrl: imageUrl,
       isbn: isbn,
       publishYear: publishYear,
-      orderIndex: position ?? fallbackIndex,
+      orderIndex: orderIndex,
     );
   }
 }

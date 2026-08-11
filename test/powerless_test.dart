@@ -6,5 +6,8 @@ void main() {
     final service = LibexService();
     final results = await service.searchSeriesBooks('Powerless');
     expect(results.length, greaterThanOrEqualTo(3));
+    final titles = results.map((b) => b.title.toLowerCase()).toList();
+    expect(titles, contains('powerless'));
+    expect(titles, contains('reckless'));
   });
 }

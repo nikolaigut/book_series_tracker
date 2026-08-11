@@ -252,11 +252,13 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _addAllToSeries() async {
     if (_results.isEmpty) return;
 
-    final filtered = _openLibrary.filterSeriesCandidates(_results);
-    final books = filtered.isEmpty ? _results : filtered;
-    final first = books.first;
+    final books = _selectedFilter == 2
+        ? _results
+        : _openLibrary.filterSeriesCandidates(_results);
+    final finalBooks = books.isEmpty ? _results : books;
+    final first = finalBooks.first;
     await _addBooks(
-      books,
+      finalBooks,
       initialName: _controller.text.trim(),
       initialAuthor: first.author,
     );
@@ -275,6 +277,155 @@ class _SearchScreenState extends State<SearchScreen> {
       default:
         return '';
     }
+  }
+
+  Widget _buildBookList() {
+    return ListView.builder(
+      itemCount: _results.length,
+      itemBuilder: (context, index) {
+        final book = _results[index];
+        return ListTile(
+          leading: book.coverUrl != null
+              ? Image.network(
+                  book.coverUrl!,
+                  width: 50,
+                  height: 70,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox(
+                    width: 50,
+                    height: 70,
+                    child: Icon(Icons.book),
+                  ),
+                )
+              : const SizedBox(
+                  width: 50,
+                  height: 70,
+                  child: Icon(Icons.book),
+                ),
+          title: Text(book.title),
+          subtitle: Text(
+            [
+              if (book.author != null && book.author!.isNotEmpty) book.author!,
+              if (book.publishYear != null) '${book.publishYear}',
+            ].join(' · '),
+          ),
+          onTap: () => _onBookTapped(book),
+        );
+      },
+    );
+  }
+
+  Future<void> _showSeriesBooks() async {
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Bücher der Reihe'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: ListView.builder(
+            itemCount: _results.length,
+            itemBuilder: (context, index) {
+              final book = _results[index];
+              return ListTile(
+                leading: book.coverUrl != null
+                    ? Image.network(
+                        book.coverUrl!,
+                        width: 40,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(
+                          width: 40,
+                          height: 60,
+                          child: Icon(Icons.book),
+                        ),
+                      )
+                    : const SizedBox(
+                        width: 40,
+                        height: 60,
+                        child: Icon(Icons.book),
+                      ),
+                title: Text(book.title),
+                subtitle: Text(
+                  [
+                    if (book.author != null && book.author!.isNotEmpty) book.author!,
+                    if (book.publishYear != null) '${book.publishYear}',
+                  ].join(' · '),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Schliessen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _addAllToSeries();
+            },
+            child: const Text('Zur Leseliste'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeriesResult() {
+    if (_loading) return const SizedBox.shrink();
+    if (_results.isEmpty) {
+      return const Center(child: Text('Keine Buchreihe gefunden'));
+    }
+
+    final seriesName = _controller.text.trim();
+    final authors = _results
+        .expand((b) => b.author?.split(',').map((a) => a.trim()) ?? const <String>[])
+        .whereType<String>()
+        .where((a) => a.isNotEmpty)
+        .toSet();
+    final authorText = authors.take(4).join(', ');
+    final subtitle = [
+      '${_results.length} Bücher',
+      if (authorText.isNotEmpty) authorText,
+    ].join(' · ');
+
+    return Center(
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.library_books, size: 48),
+              const SizedBox(height: 12),
+              Text(
+                'Buchreihe "$seriesName"',
+                style: Theme.of(context).textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(subtitle, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: _showSeriesBooks,
+                    child: const Text('Bücher anzeigen'),
+                  ),
+                  FilledButton(
+                    onPressed: _addAllToSeries,
+                    child: const Text('Zur Leseliste'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -339,39 +490,7 @@ class _SearchScreenState extends State<SearchScreen> {
             if (_error != null)
               Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             Expanded(
-              child: ListView.builder(
-                itemCount: _results.length,
-                itemBuilder: (context, index) {
-                  final book = _results[index];
-                  return ListTile(
-                    leading: book.coverUrl != null
-                        ? Image.network(
-                            book.coverUrl!,
-                            width: 50,
-                            height: 70,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const SizedBox(
-                              width: 50,
-                              height: 70,
-                              child: Icon(Icons.book),
-                            ),
-                          )
-                        : const SizedBox(
-                            width: 50,
-                            height: 70,
-                            child: Icon(Icons.book),
-                          ),
-                    title: Text(book.title),
-                    subtitle: Text(
-                      [
-                        if (book.author != null && book.author!.isNotEmpty) book.author!,
-                        if (book.publishYear != null) '${book.publishYear}',
-                      ].join(' · '),
-                    ),
-                    onTap: () => _onBookTapped(book),
-                  );
-                },
-              ),
+              child: _selectedFilter == 2 ? _buildSeriesResult() : _buildBookList(),
             ),
           ],
         ),

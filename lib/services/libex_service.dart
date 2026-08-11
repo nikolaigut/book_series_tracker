@@ -25,35 +25,62 @@ class LibexService {
       final candidates = data.whereType<Map<String, dynamic>>().take(10).toList();
       if (candidates.isEmpty) return [];
 
-      final scored = <({int score, List<Book> books})>[];
+      List<Book> bestBooks = [];
+      double bestNameScore = 0.0;
+      int bestScore = -1;
+
       for (final candidate in candidates) {
         final asin = candidate['asin'] as String?;
         if (asin == null || asin.isEmpty) continue;
         final books = await _fetchSeriesBooks(asin);
         if (books.isEmpty) continue;
+
         final name = (candidate['name'] as String? ?? '').trim();
         final nameScore = _nameScore(name, trimmed);
-        scored.add((score: nameScore * 1000 + books.length, books: books));
+        final totalScore = (nameScore * 10000).round() + books.length;
+
+        if (totalScore > bestScore) {
+          bestScore = totalScore;
+          bestBooks = books;
+          bestNameScore = nameScore;
+        }
       }
 
-      if (scored.isEmpty) return [];
-      scored.sort((a, b) => b.score.compareTo(a.score));
-      return scored.first.books;
+      if (bestNameScore < 0.1) return [];
+      return bestBooks;
     } catch (_) {
       return [];
     }
   }
 
-  int _nameScore(String seriesName, String query) {
-    final s = seriesName.toLowerCase();
-    final q = query.toLowerCase();
-    if (s == q) return 10;
-    if (s.contains(q) || q.contains(s)) return 5;
+  double _nameScore(String seriesName, String query) {
+    final sWords = _meaningfulWords(seriesName);
+    final qWords = _meaningfulWords(query);
+    if (sWords.isEmpty || qWords.isEmpty) return 0.0;
 
-    final qWords = q.split(RegExp(r'\s+')).where((w) => w.length > 2).toSet();
-    final sWords = s.split(RegExp(r'\s+')).where((w) => w.length > 2).toSet();
-    if (qWords.intersection(sWords).isNotEmpty) return 2;
-    return 0;
+    if (sWords.length == qWords.length &&
+        sWords.containsAll(qWords) &&
+        qWords.containsAll(sWords)) {
+      return 1.0;
+    }
+
+    final intersection = sWords.intersection(qWords).length;
+    final union = sWords.union(qWords).length;
+    return union == 0 ? 0.0 : intersection / union;
+  }
+
+  static final Set<String> _stopWords = {
+    'the', 'a', 'an', 'and', 'or', 'of', 'in', 'on', 'at', 'to', 'for', 'with',
+    'by', 'from', 'as', 'is', 'it', 'this', 'that', 'de', 'la', 'el', 'en',
+    'die', 'der', 'und', 'das', 'les', 'une', 'et', 'le', 'series', 'trilogy',
+  };
+
+  Set<String> _meaningfulWords(String text) {
+    return RegExp(r"[\p{L}0-9']+", unicode: true)
+        .allMatches(text.toLowerCase())
+        .map((m) => m.group(0)!)
+        .where((w) => w.length > 2 && !_stopWords.contains(w))
+        .toSet();
   }
 
   Future<List<Book>> _fetchSeriesBooks(String asin) async {

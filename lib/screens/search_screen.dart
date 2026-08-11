@@ -43,9 +43,14 @@ class _SearchScreenState extends State<SearchScreen> {
               : _selectedFilter == 2
                   ? SearchType.series
                   : SearchType.any;
-      var results = await _openLibrary.search(query, type: type);
-      if (type == SearchType.series && results.isEmpty) {
+      var results = <Book>[];
+      if (type == SearchType.series) {
         results = await _libex.searchSeriesBooks(query);
+        if (results.isEmpty) {
+          results = await _openLibrary.search(query, type: type);
+        }
+      } else {
+        results = await _openLibrary.search(query, type: type);
       }
       setState(() {
         _results = results;

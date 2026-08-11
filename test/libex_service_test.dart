@@ -12,8 +12,5 @@ void main() {
     final service = LibexService();
     final results = await service.searchSeriesBooks('The Wind Weaver');
     expect(results.isNotEmpty, true);
-    for (final b in results) {
-      print('${b.orderIndex + 1}. ${b.title} - ${b.author}');
-    }
   });
 }

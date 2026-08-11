@@ -22,31 +22,40 @@ class LibexService {
       if (response.statusCode != 200) return [];
 
       final data = jsonDecode(response.body) as List<dynamic>? ?? [];
-      final candidates = data.whereType<Map<String, dynamic>>().take(10).toList();
+      final candidates = data.whereType<Map<String, dynamic>>().toList();
       if (candidates.isEmpty) return [];
+
+      final scored = candidates.map((c) {
+        final name = (c['name'] as String? ?? '').trim();
+        return (candidate: c, nameScore: _nameScore(name, trimmed));
+      }).toList()
+        ..sort((a, b) => b.nameScore.compareTo(a.nameScore));
+
+      final topCandidates = scored
+          .where((s) => s.nameScore >= 0.05)
+          .take(3)
+          .toList();
+      if (topCandidates.isEmpty) topCandidates.add(scored.first);
 
       List<Book> bestBooks = [];
       double bestNameScore = 0.0;
       int bestScore = -1;
 
-      for (final candidate in candidates) {
-        final asin = candidate['asin'] as String?;
+      for (final entry in topCandidates) {
+        final asin = entry.candidate['asin'] as String?;
         if (asin == null || asin.isEmpty) continue;
         final books = await _fetchSeriesBooks(asin);
         if (books.isEmpty) continue;
 
-        final name = (candidate['name'] as String? ?? '').trim();
-        final nameScore = _nameScore(name, trimmed);
-        final totalScore = (nameScore * 10000).round() + books.length;
-
+        final totalScore = (entry.nameScore * 10000).round() + books.length;
         if (totalScore > bestScore) {
           bestScore = totalScore;
           bestBooks = books;
-          bestNameScore = nameScore;
+          bestNameScore = entry.nameScore;
         }
       }
 
-      if (bestNameScore < 0.1) return [];
+      if (bestNameScore < 0.1 || bestBooks.isEmpty) return [];
       return bestBooks;
     } catch (_) {
       return [];

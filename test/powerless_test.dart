@@ -5,6 +5,6 @@ void main() {
   test('Powerless series via Libex', () async {
     final service = LibexService();
     final results = await service.searchSeriesBooks('Powerless');
-    expect(results.isNotEmpty, true);
+    expect(results.length, greaterThanOrEqualTo(3));
   });
 }

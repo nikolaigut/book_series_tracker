@@ -63,6 +63,73 @@ class _SeriesScreenState extends State<SeriesScreen> {
     _loadBooks();
   }
 
+  Future<void> _addBookManually() async {
+    final titleController = TextEditingController();
+    final authorController = TextEditingController();
+    final yearController = TextEditingController();
+
+    bool confirmed = false;
+    try {
+      confirmed = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Buch manuell hinzufügen'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(labelText: 'Titel *'),
+                    ),
+                    TextField(
+                      controller: authorController,
+                      decoration: const InputDecoration(labelText: 'Autor'),
+                    ),
+                    TextField(
+                      controller: yearController,
+                      decoration: const InputDecoration(labelText: 'Erscheinungsjahr'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Abbrechen'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (titleController.text.trim().isEmpty) return;
+                    Navigator.of(context).pop(true);
+                  },
+                  child: const Text('Hinzufügen'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    } finally {
+      titleController.dispose();
+      authorController.dispose();
+      yearController.dispose();
+    }
+
+    if (!confirmed) return;
+
+    final year = int.tryParse(yearController.text.trim());
+    final book = Book(
+      seriesId: widget.series.id,
+      title: titleController.text.trim(),
+      author: authorController.text.trim().isEmpty ? null : authorController.text.trim(),
+      publishYear: year,
+      orderIndex: _books.length,
+    );
+    await _db.insertBook(book);
+    _loadBooks();
+  }
+
   Future<void> _reorder(int oldIndex, int newIndex) async {
     if (newIndex > oldIndex) newIndex -= 1;
     final moved = _books.removeAt(oldIndex);
@@ -171,6 +238,11 @@ class _SeriesScreenState extends State<SeriesScreen> {
                 ),
               ],
             ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addBookManually,
+        tooltip: 'Buch hinzufügen',
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }

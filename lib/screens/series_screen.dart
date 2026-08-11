@@ -110,9 +110,31 @@ class _SeriesScreenState extends State<SeriesScreen> {
                               key: ValueKey(book.id),
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                               child: ListTile(
-                                leading: Checkbox(
-                                  value: book.read,
-                                  onChanged: (_) => _toggleRead(book),
+                                leading: SizedBox(
+                                  width: 48,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 14,
+                                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                        child: Text(
+                                          '${book.orderIndex + 1}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                          ),
+                                        ),
+                                      ),
+                                      Transform.scale(
+                                        scale: 0.8,
+                                        child: Checkbox(
+                                          value: book.read,
+                                          onChanged: (_) => _toggleRead(book),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                                 title: Text(
                                   book.title,

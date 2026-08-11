@@ -95,6 +95,11 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               _book.title,
               style: Theme.of(context).textTheme.headlineSmall,
             ),
+            if (_book.seriesId != null)
+              Text(
+                'Band ${_book.orderIndex + 1}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             if (_book.author != null && _book.author!.isNotEmpty)
               Text('Autor: ${_book.author}', style: Theme.of(context).textTheme.titleMedium),
             if (_book.publishYear != null)

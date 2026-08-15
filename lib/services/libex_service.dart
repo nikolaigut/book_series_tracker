@@ -73,8 +73,8 @@ class LibexService {
   }
 
   double _nameScore(String seriesName, String query) {
-    final sWords = _meaningfulWords(seriesName);
-    final qWords = _meaningfulWords(query);
+    final sWords = meaningfulWords(seriesName);
+    final qWords = meaningfulWords(query);
     if (sWords.isEmpty || qWords.isEmpty) return 0.0;
 
     if (sWords.length == qWords.length &&
@@ -95,7 +95,8 @@ class LibexService {
     'saga', 'novel', 'story', 'stories', 'chronicles', 'volume', 'vol',
   };
 
-  Set<String> _meaningfulWords(String text) {
+  /// Exposed so callers can compare meaningful query words with the same rules.
+  static Set<String> meaningfulWords(String text) {
     final normalized = normalizeForSearch(text);
     return RegExp(r"[\p{L}0-9']+", unicode: true)
         .allMatches(normalized)

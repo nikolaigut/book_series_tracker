@@ -70,16 +70,15 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   bool _resultsContainQuery(List<Book> books, String query) {
-    final normalized = LibexService.normalizeForSearch(query);
-    final words = normalized
-        .split(RegExp(r'\s+'))
-        .where((w) => w.length > 2)
-        .toSet();
-    if (words.isEmpty) return true;
+    final queryWords = LibexService.meaningfulWords(query);
+    if (queryWords.isEmpty) return true;
     for (final book in books) {
-      final haystack =
-          '${LibexService.normalizeForSearch(book.title)} ${LibexService.normalizeForSearch(book.author ?? '')}';
-      if (words.every((w) => haystack.contains(w))) return true;
+      final titleWords = LibexService.meaningfulWords(book.title);
+      final authorWords = LibexService.meaningfulWords(book.author ?? '');
+      if (queryWords.every(titleWords.contains) ||
+          queryWords.every(authorWords.contains)) {
+        return true;
+      }
     }
     return false;
   }

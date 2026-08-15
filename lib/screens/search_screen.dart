@@ -51,6 +51,9 @@ class _SearchScreenState extends State<SearchScreen> {
         }
       } else {
         results = await _openLibrary.search(query, type: type);
+        if (results.isEmpty) {
+          results = await _libex.searchSeriesBooks(query);
+        }
       }
       setState(() {
         _results = results;
@@ -120,7 +123,7 @@ class _SearchScreenState extends State<SearchScreen> {
       await _db.insertBook(
         book.copyWith(
           seriesId: seriesId,
-          orderIndex: order,
+          orderIndex: book.orderIndex > 0 ? existing.length + book.orderIndex - 1 : order,
         ),
       );
       order++;

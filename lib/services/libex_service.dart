@@ -96,11 +96,37 @@ class LibexService {
   };
 
   Set<String> _meaningfulWords(String text) {
+    final normalized = _normalizeUmlauts(text.toLowerCase());
     return RegExp(r"[\p{L}0-9']+", unicode: true)
-        .allMatches(text.toLowerCase())
+        .allMatches(normalized)
         .map((m) => m.group(0)!)
         .where((w) => w.length > 2 && !_stopWords.contains(w))
         .toSet();
+  }
+
+  String _normalizeUmlauts(String text) {
+    return text
+        .replaceAll('ä', 'ae')
+        .replaceAll('ö', 'oe')
+        .replaceAll('ü', 'ue')
+        .replaceAll('ß', 'ss')
+        .replaceAll('é', 'e')
+        .replaceAll('è', 'e')
+        .replaceAll('á', 'a')
+        .replaceAll('à', 'a')
+        .replaceAll('ó', 'o')
+        .replaceAll('ò', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ù', 'u')
+        .replaceAll('â', 'a')
+        .replaceAll('ê', 'e')
+        .replaceAll('î', 'i')
+        .replaceAll('ô', 'o')
+        .replaceAll('û', 'u')
+        .replaceAll('ç', 'c')
+        .replaceAll('ñ', 'n')
+        .replaceAll('í', 'i')
+        .replaceAll('ì', 'i');
   }
 
   Future<List<Book>> _fetchSeriesBooks(String asin) async {

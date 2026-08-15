@@ -48,7 +48,6 @@ class OpenLibraryService {
       case SearchType.series:
         return 'series:"$escaped"';
       case SearchType.any:
-      default:
         return escaped;
     }
   }
@@ -94,7 +93,7 @@ class OpenLibraryService {
 
     for (final authorName in allowedAuthors) {
       final escaped = authorName.replaceAll('"', '\\"');
-      final q = 'author:"$escaped" "$trimmed" language:eng';
+      final q = 'author:"$escaped" "$trimmed"';
       final results = await _fetchSearch(q, limit: 50);
       for (final book in results) {
         if (book.openLibraryKey == null || seenKeys.contains(book.openLibraryKey)) continue;
@@ -104,7 +103,7 @@ class OpenLibraryService {
     }
 
     if (allBooks.length < 10) {
-      final broad = await _fetchSearch('"$trimmed" language:eng', limit: 100);
+      final broad = await _fetchSearch('"$trimmed"', limit: 100);
       for (final book in broad) {
         if (book.openLibraryKey == null || seenKeys.contains(book.openLibraryKey)) continue;
         seenKeys.add(book.openLibraryKey);
@@ -179,7 +178,7 @@ class OpenLibraryService {
 
     for (final book in books) {
       if (book.title.isEmpty) continue;
-      if (!_isLikelyEnglishTitle(book.title)) continue;
+      if (!_isValidTitle(book.title)) continue;
       final normalized = _coreTitle(book.title, seriesName: seriesName, allowedAuthors: allowedAuthors);
       if (seen.contains(normalized)) continue;
       if (exclude.hasMatch(book.title)) continue;
@@ -249,15 +248,9 @@ class OpenLibraryService {
     return t;
   }
 
-  bool _isLikelyEnglishTitle(String title) {
-    if (!RegExp(r'^[\x20-\x7E]+$').hasMatch(title)) return false;
-    final first = title.trim().split(RegExp(r'\s+')).first.toLowerCase();
-    final nonEnglish = {
-      'der', 'die', 'das', 'de', 'en', 'el', 'la', 'los', 'las', 'les',
-      'un', 'une', 'le', 'il', 'lo', 'gli', 'l', 'roett', 'roed', 'rott',
-      'ereschuld', 'stan', 'arnav', 'golf', 'fan', 'hai',
-    };
-    return !nonEnglish.contains(first);
+  bool _isValidTitle(String title) {
+    if (title.trim().isEmpty) return false;
+    return !RegExp(r'[\x00-\x1F\x7F]').hasMatch(title);
   }
 
   Map<String, String> get _usSpellingVariants => const {

@@ -131,7 +131,6 @@ class _SeriesScreenState extends State<SeriesScreen> {
   }
 
   Future<void> _reorder(int oldIndex, int newIndex) async {
-    if (newIndex > oldIndex) newIndex -= 1;
     final moved = _books.removeAt(oldIndex);
     _books.insert(newIndex, moved);
 
@@ -170,7 +169,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
                       ? const Center(child: Text('Noch keine Bücher in dieser Reihe.'))
                       : ReorderableListView.builder(
                           itemCount: _books.length,
-                          onReorder: _reorder,
+                          onReorderItem: _reorder,
                           itemBuilder: (context, index) {
                             final book = _books[index];
                             return Card(

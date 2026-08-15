@@ -20,7 +20,7 @@ class _SearchScreenState extends State<SearchScreen> {
   final DatabaseService _db = DatabaseService();
   final TextEditingController _controller = TextEditingController();
 
-  int _selectedFilter = 0; // 0 = title, 1 = author, 2 = any
+  int _selectedFilter = 0; // 0 = title, 1 = author, 2 = series, 3 = any
   bool _loading = false;
   List<Book> _results = [];
   String? _error;
@@ -51,6 +51,11 @@ class _SearchScreenState extends State<SearchScreen> {
         }
       } else {
         results = await _openLibrary.search(query, type: type);
+        if (results.isEmpty ||
+            (type == SearchType.any &&
+                !_resultsContainQuery(results, query))) {
+          results = await _libex.searchSeriesBooks(query);
+        }
       }
       setState(() {
         _results = results;
@@ -62,6 +67,19 @@ class _SearchScreenState extends State<SearchScreen> {
         _loading = false;
       });
     }
+  }
+
+  bool _resultsContainQuery(List<Book> books, String query) {
+    final normalizedQuery = LibexService.normalizeForSearch(query);
+    if (normalizedQuery.trim().isEmpty) return true;
+    for (final book in books) {
+      final title = LibexService.normalizeForSearch(book.title);
+      final author = LibexService.normalizeForSearch(book.author ?? '');
+      if (title.contains(normalizedQuery) || author.contains(normalizedQuery)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<ReadingSeries?> _chooseSeries({String? initialName, String? initialAuthor}) async {
@@ -120,7 +138,7 @@ class _SearchScreenState extends State<SearchScreen> {
       await _db.insertBook(
         book.copyWith(
           seriesId: seriesId,
-          orderIndex: order,
+          orderIndex: book.orderIndex > 0 ? existing.length + book.orderIndex - 1 : order,
         ),
       );
       order++;

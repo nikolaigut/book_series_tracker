@@ -42,7 +42,7 @@ class _AddToSeriesDialogState extends State<AddToSeriesDialog> {
             if (widget.existingSeries.isNotEmpty) ...[
               const Text('Bestehende Reihe'),
               DropdownButtonFormField<int?>(
-                value: _selectedSeriesId,
+                initialValue: _selectedSeriesId,
                 isExpanded: true,
                 hint: const Text('Reihe auswählen'),
                 items: [

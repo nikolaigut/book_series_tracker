@@ -73,8 +73,8 @@ class LibexService {
   }
 
   double _nameScore(String seriesName, String query) {
-    final sWords = _meaningfulWords(seriesName);
-    final qWords = _meaningfulWords(query);
+    final sWords = meaningfulWords(seriesName);
+    final qWords = meaningfulWords(query);
     if (sWords.isEmpty || qWords.isEmpty) return 0.0;
 
     if (sWords.length == qWords.length &&
@@ -95,12 +95,42 @@ class LibexService {
     'saga', 'novel', 'story', 'stories', 'chronicles', 'volume', 'vol',
   };
 
-  Set<String> _meaningfulWords(String text) {
+  /// Exposed so callers can compare meaningful query words with the same rules.
+  static Set<String> meaningfulWords(String text) {
+    final normalized = normalizeForSearch(text);
     return RegExp(r"[\p{L}0-9']+", unicode: true)
-        .allMatches(text.toLowerCase())
+        .allMatches(normalized)
         .map((m) => m.group(0)!)
         .where((w) => w.length > 2 && !_stopWords.contains(w))
         .toSet();
+  }
+
+  /// Exposed so callers can match umlaut/ASCII variants with the same rules.
+  static String normalizeForSearch(String text) => _normalizeUmlauts(text.toLowerCase());
+
+  static String _normalizeUmlauts(String text) {
+    return text
+        .replaceAll('ä', 'ae')
+        .replaceAll('ö', 'oe')
+        .replaceAll('ü', 'ue')
+        .replaceAll('ß', 'ss')
+        .replaceAll('é', 'e')
+        .replaceAll('è', 'e')
+        .replaceAll('á', 'a')
+        .replaceAll('à', 'a')
+        .replaceAll('ó', 'o')
+        .replaceAll('ò', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ù', 'u')
+        .replaceAll('â', 'a')
+        .replaceAll('ê', 'e')
+        .replaceAll('î', 'i')
+        .replaceAll('ô', 'o')
+        .replaceAll('û', 'u')
+        .replaceAll('ç', 'c')
+        .replaceAll('ñ', 'n')
+        .replaceAll('í', 'i')
+        .replaceAll('ì', 'i');
   }
 
   Future<List<Book>> _fetchSeriesBooks(String asin) async {

@@ -96,7 +96,7 @@ class LibexService {
   };
 
   Set<String> _meaningfulWords(String text) {
-    final normalized = _normalizeUmlauts(text.toLowerCase());
+    final normalized = normalizeForSearch(text);
     return RegExp(r"[\p{L}0-9']+", unicode: true)
         .allMatches(normalized)
         .map((m) => m.group(0)!)
@@ -104,7 +104,10 @@ class LibexService {
         .toSet();
   }
 
-  String _normalizeUmlauts(String text) {
+  /// Exposed so callers can match umlaut/ASCII variants with the same rules.
+  static String normalizeForSearch(String text) => _normalizeUmlauts(text.toLowerCase());
+
+  static String _normalizeUmlauts(String text) {
     return text
         .replaceAll('ä', 'ae')
         .replaceAll('ö', 'oe')

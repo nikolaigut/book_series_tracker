@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/book.dart';
+import 'known_series.dart';
 
 class LibexService {
   static const String _base = 'https://libex.lostcartographer.xyz';
@@ -22,6 +23,9 @@ class LibexService {
   Future<List<Book>> searchSeriesBooks(String seriesName) async {
     final trimmed = seriesName.trim();
     if (trimmed.isEmpty) return [];
+
+    final known = KnownSeries.findSeries(normalizeForSearch(trimmed));
+    if (known != null) return known;
 
     final uri = Uri.parse('$_base/series').replace(
       queryParameters: {'name': trimmed},

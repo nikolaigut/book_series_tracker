@@ -6,10 +6,12 @@ void main() {
   test('Libex finds complete Girl, Goddess, Queen series', () async {
     final service = LibexService();
     final results = await service.searchSeriesBooks('Girl, Goddess, Queen');
-    expect(results.length, greaterThanOrEqualTo(2));
+    expect(results.length, greaterThanOrEqualTo(4));
     final titles = results.map((b) => b.title.toLowerCase()).toSet();
     expect(titles, contains('girl, goddess, queen'));
     expect(titles, contains('the end crowns all'));
+    expect(titles, contains('a beautiful evil'));
+    expect(titles, contains('this divine revelry'));
   });
 
   test('OpenLibrary series search is missing the sequel', () async {

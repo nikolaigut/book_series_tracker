@@ -15,7 +15,7 @@ class LibexService {
     r'sticker|poster|map book|companion|official|merchandise|play|drama|'
     r'full[-\s]cast|dramatized|dramatised|abridged|movie|tv|behind the scenes|'
     r'prelude|prequel|deleted|short story|0\.5|1\.5|2\.5|3\.5|4\.5|5\.5|6\.5|7\.5|8\.5|9\.5)'
-    r'(?:\s|$|[,;:!.)\]])',
+    r'(?:\s|$|[,;:!. )\]])',
     caseSensitive: false,
   );
 
@@ -47,26 +47,37 @@ class LibexService {
           .toList();
       if (topCandidates.isEmpty) topCandidates.add(scored.first);
 
-      List<Book> bestBooks = [];
+      var bestResult = (books: <Book>[], language: null as String?);
       double bestNameScore = 0.0;
       int bestScore = -1;
 
       for (final entry in topCandidates) {
         final asin = entry.candidate['asin'] as String?;
         if (asin == null || asin.isEmpty) continue;
-        final books = await _fetchSeriesBooks(asin);
-        if (books.isEmpty) continue;
+        final result = await _fetchSeriesBooks(asin);
+        if (result.books.isEmpty) continue;
 
-        final totalScore = (entry.nameScore * 10000).round() + books.length;
+        final totalScore = (entry.nameScore * 10000).round() + result.books.length;
         if (totalScore > bestScore) {
           bestScore = totalScore;
-          bestBooks = books;
+          bestResult = result;
           bestNameScore = entry.nameScore;
         }
       }
 
-      if (bestNameScore < 0.1 || bestBooks.isEmpty) return [];
-      return bestBooks;
+      if (bestNameScore < 0.1 || bestResult.books.isEmpty) return [];
+
+      final author = _authorFrom(bestResult.books);
+      if (author != null && author.isNotEmpty) {
+        final extra = await _fetchAuthorBooks(
+          author,
+          bestResult.books,
+          allowedLanguage: bestResult.language,
+        );
+        return _mergeAndSortSeriesBooks(bestResult.books, extra);
+      }
+
+      return _sortSeriesBooks(bestResult.books);
     } catch (_) {
       return [];
     }
@@ -133,16 +144,24 @@ class LibexService {
         .replaceAll('ì', 'i');
   }
 
-  Future<List<Book>> _fetchSeriesBooks(String asin) async {
+  String? _authorFrom(List<Book> books) {
+    for (final book in books) {
+      if (book.author != null && book.author!.isNotEmpty) return book.author!;
+    }
+    return null;
+  }
+
+  Future<({List<Book> books, String? language})> _fetchSeriesBooks(String asin) async {
     final uri = Uri.parse('$_base/series/$asin/books');
 
     try {
       final response = await http.get(uri, headers: _headers);
-      if (response.statusCode != 200) return [];
+      if (response.statusCode != 200) return (books: <Book>[], language: null);
 
       final data = jsonDecode(response.body) as List<dynamic>? ?? [];
       final seen = <String>{};
       final books = <Book>[];
+      final languageCounts = <String, int>{};
 
       for (final raw in data) {
         if (raw is! Map<String, dynamic>) continue;
@@ -160,13 +179,100 @@ class LibexService {
         if (seen.contains(key)) continue;
         seen.add(key);
         books.add(book);
+
+        final lang = (raw['language'] as String? ?? '').toLowerCase();
+        if (lang.isNotEmpty) {
+          languageCounts[lang] = (languageCounts[lang] ?? 0) + 1;
+        }
       }
 
       books.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
-      return books;
+
+      String? dominantLanguage;
+      if (languageCounts.isNotEmpty) {
+        dominantLanguage = languageCounts.entries
+            .reduce((a, b) => a.value > b.value ? a : b)
+            .key;
+      }
+
+      return (books: books, language: dominantLanguage);
+    } catch (_) {
+      return (books: <Book>[], language: null);
+    }
+  }
+
+  Future<List<Book>> _fetchAuthorBooks(
+    String authorName,
+    List<Book> existingBooks, {
+    String? allowedLanguage,
+  }) async {
+    final uri = Uri.parse('$_base/author/books').replace(
+      queryParameters: {'name': authorName},
+    );
+
+    try {
+      final response = await http.get(uri, headers: _headers);
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body) as List<dynamic>? ?? [];
+      final existingTitles = existingBooks
+          .where((b) => b.title.isNotEmpty)
+          .map((b) => b.title.toLowerCase())
+          .toSet();
+      final referenceTitles = existingBooks
+          .where((b) => b.title.isNotEmpty)
+          .map((b) => b.title.toLowerCase())
+          .toList();
+      if (referenceTitles.isEmpty) return [];
+
+      final books = <Book>[];
+      final seen = <String>{...existingTitles};
+
+      for (final raw in data) {
+        if (raw is! Map<String, dynamic>) continue;
+
+        final title = (raw['title'] as String? ?? '').trim();
+        if (title.isEmpty) continue;
+
+        final lang = (raw['language'] as String? ?? '').toLowerCase();
+        if (allowedLanguage != null && allowedLanguage.isNotEmpty && lang != allowedLanguage) continue;
+
+        final genres = (raw['genres'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map((g) => (g['name'] as String? ?? '').toLowerCase())
+                .toList() ??
+            [];
+        if (genres.any(_isAdultThrillerGenre)) continue;
+
+        final subtitle = (raw['subtitle'] as String? ?? '').trim();
+        if (_isExcluded(title, subtitle)) continue;
+
+        final text = '${raw['summary'] ?? ''} ${raw['description'] ?? ''} ${raw['subtitle'] ?? ''}'
+            .toLowerCase();
+        if (!referenceTitles.any((t) => text.contains(t))) continue;
+
+        final book = _mapToBook(raw, seriesAsin: '', posStr: null);
+        if (book.author == null || book.author!.isEmpty) continue;
+
+        final key = book.title.toLowerCase();
+        if (seen.contains(key)) continue;
+        seen.add(key);
+        books.add(book);
+      }
+
+      return _sortSeriesBooks(books);
     } catch (_) {
       return [];
     }
+  }
+
+  bool _isAdultThrillerGenre(String genre) {
+    final g = genre.toLowerCase();
+    return g.contains('thriller') ||
+        g.contains('suspense') ||
+        g.contains('mystery') ||
+        g.contains('crime') ||
+        g.contains('police');
   }
 
   bool _isExcluded(String title, String subtitle) {
@@ -189,6 +295,33 @@ class LibexService {
       caseSensitive: false,
     ).firstMatch(subtitle);
     return match?.group(1);
+  }
+
+  List<Book> _mergeAndSortSeriesBooks(List<Book> base, List<Book> extra) {
+    final seen = <String>{};
+    final merged = <Book>[];
+    for (final book in [...base, ...extra]) {
+      final key = '${book.title.toLowerCase()}|${(book.author ?? '').toLowerCase()}';
+      if (seen.contains(key)) continue;
+      seen.add(key);
+      merged.add(book);
+    }
+    return _sortSeriesBooks(merged);
+  }
+
+  List<Book> _sortSeriesBooks(List<Book> books) {
+    books.sort((a, b) {
+      final aIndex = a.orderIndex == 0 ? 10000 : a.orderIndex;
+      final bIndex = b.orderIndex == 0 ? 10000 : b.orderIndex;
+      var cmp = aIndex.compareTo(bIndex);
+      if (cmp != 0) return cmp;
+      final ay = a.publishYear;
+      final by = b.publishYear;
+      if (ay != null && by != null) cmp = ay.compareTo(by);
+      if (cmp != 0) return cmp;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+    return books;
   }
 
   Book _mapToBook(

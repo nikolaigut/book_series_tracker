@@ -55,6 +55,11 @@ class _SearchScreenState extends State<SearchScreen> {
             (type == SearchType.any &&
                 !_resultsContainQuery(results, query))) {
           results = await _libex.searchSeriesBooks(query);
+        } else if (type == SearchType.any && results.length <= 1) {
+          final libexResults = await _libex.searchSeriesBooks(query);
+          if (libexResults.length > results.length) {
+            results = libexResults;
+          }
         }
       }
       setState(() {
@@ -153,27 +158,47 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<String?> _detectSeriesName(Book book) async {
     final key = book.openLibraryKey;
-    if (key == null || key.isEmpty) return null;
+    if (key != null && key.isNotEmpty) {
+      final work = await _openLibrary.fetchWork(key);
+      if (work != null) {
+        final seriesList = work['series'] as List<dynamic>?;
+        if (seriesList != null && seriesList.isNotEmpty) {
+          final first = seriesList.first;
+          if (first is String) return first;
+          if (first is Map<String, dynamic>) {
+            final name = first['name'] as String?;
+            if (name != null && name.isNotEmpty) return name;
 
-    final work = await _openLibrary.fetchWork(key);
-    if (work == null) return null;
-
-    final seriesList = work['series'] as List<dynamic>?;
-    if (seriesList == null || seriesList.isEmpty) return null;
-
-    final first = seriesList.first;
-    if (first is String) return first;
-    if (first is Map<String, dynamic>) {
-      final name = first['name'] as String?;
-      if (name != null && name.isNotEmpty) return name;
-
-      final seriesMap = first['series'] as Map<String, dynamic>?;
-      final seriesKey = seriesMap?['key'] as String?;
-      if (seriesKey != null && seriesKey.isNotEmpty) {
-        return _openLibrary.fetchSeriesName(seriesKey);
+            final seriesMap = first['series'] as Map<String, dynamic>?;
+            final seriesKey = seriesMap?['key'] as String?;
+            if (seriesKey != null && seriesKey.isNotEmpty) {
+              return _openLibrary.fetchSeriesName(seriesKey);
+            }
+          }
+        }
       }
     }
+
+    try {
+      final libexBooks = await _libex.searchSeriesBooks(book.title);
+      if (libexBooks.length > 1 &&
+          libexBooks.any((b) =>
+              b.title.toLowerCase() == book.title.toLowerCase())) {
+        return book.title;
+      }
+    } catch (_) {}
     return null;
+  }
+
+  Future<List<Book>> _loadSeriesBooks(String seriesName, String? author) async {
+    var books = await _openLibrary.searchSeriesBooks(seriesName, author: author);
+    if (books.length <= 1) {
+      final libexBooks = await _libex.searchSeriesBooks(seriesName);
+      if (libexBooks.length > books.length) {
+        books = libexBooks;
+      }
+    }
+    return books;
   }
 
   Future<void> _onBookTapped(Book book) async {
@@ -222,7 +247,7 @@ class _SearchScreenState extends State<SearchScreen> {
         setState(() => _loading = true);
         List<Book> books = [];
         try {
-          books = await _openLibrary.searchSeriesBooks(seriesName, author: book.author);
+          books = await _loadSeriesBooks(seriesName, book.author);
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
